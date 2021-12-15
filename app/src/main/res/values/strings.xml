@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">Minutiae</string>
+    <string name="action_settings">Settings</string>
+    <!-- Strings used for fragments for navigation -->
+    <string name="button_take_picture">TAKE PICTURE</string>
+
+    <string name="permission_camera_title">Camera</string>
+    <string name="permission_camera_rationale">Access to the camera is needed for detection</string>
+    <string name="no_camera_permission">This application cannot run because it does not have the camera permission.  The application will now exit.</string>
+    <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+    <string name="button_go_back">Go Back</string>
+    <string name="button_go_settings">Go to Settings</string>
+
+    <string name="enable_autofocus">Autofocus On</string>
+    <string name="disable_autofocus">Autofocus Off</string>
+
+    <string name="step_start">Starting Minutiae Extraction</string>
+    <string name="step_skin_detection">Skin Detection</string>
+    <string name="step_histogram_equalization">Histogram Equalization</string>
+    <string name="step_fingerprint_skelization">Fingerprint Skelization</string>
+    <string name="step_ridge_thinning">Ridge Thinning</string>
+    <string name="step_minutiae_extraction">Minutiae Extraction</string>
+
+</resources>
