@@ -1,4 +1,4 @@
-# Passport Reader
+# Android Minutiae
 
 Sample project to extract Minutiae from Camera using CameraX library and OpenCV.
 
