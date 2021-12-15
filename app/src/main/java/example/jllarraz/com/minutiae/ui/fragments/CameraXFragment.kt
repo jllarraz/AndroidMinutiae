@@ -27,7 +27,6 @@ import android.content.res.Configuration
 import android.graphics.*
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.display.DisplayManager
-import android.media.Image
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -38,10 +37,12 @@ import android.view.ScaleGestureDetector
 import android.view.Surface
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.camera2.interop.Camera2CameraFilter
+import androidx.camera.camera2.internal.Camera2CameraFactory
+import androidx.camera.camera2.internal.Camera2CameraInfoImpl
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.*
 import androidx.camera.core.Camera
-import androidx.camera.extensions.AutoPreviewExtender
+//import androidx.camera.extensions.AutoPreviewExtender
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -64,18 +65,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import example.jllarraz.com.myapplication.R
-import android.hardware.camera2.CaptureRequest
-
-import android.hardware.camera2.CameraMetadata
-
-import androidx.camera.camera2.interop.Camera2Interop
-
-import androidx.camera.core.ExtendableBuilder
 import androidx.camera.core.FocusMeteringAction
-
-import androidx.camera.core.MeteringPoint
-
-import androidx.camera.view.TextureViewMeteringPointFactory
 
 
 
@@ -110,7 +100,7 @@ abstract class CameraXFragment : Fragment() {
     private lateinit var broadcastManager: LocalBroadcastManager
 
     private var displayId: Int = -1
-    private var cameraId: Int = -1
+    protected var cameraId: Int = -1
     protected var lensFacing: Int = CameraSelector.LENS_FACING_BACK
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
@@ -286,7 +276,7 @@ abstract class CameraXFragment : Fragment() {
     }
 
     /** Declare and bind preview, capture and analysis use cases */
-    @SuppressLint("UnsafeExperimentalUsageError")
+    @SuppressLint("UnsafeExperimentalUsageError", "RestrictedApi", "UnsafeOptInUsageError")
     private fun bindCameraUseCases() {
 
         // Get screen metrics used to setup camera for full screen resolution
@@ -303,19 +293,23 @@ abstract class CameraXFragment : Fragment() {
                 ?: throw IllegalStateException("Camera initialization failed.")
 
         // CameraSelector
-        val camera2Filter = Camera2CameraFilter.Camera2Filter { idCharacteristicsMap: LinkedHashMap<String, CameraCharacteristics> ->
-            val characteristicsMap = LinkedHashMap<String, CameraCharacteristics?>()
-            for (key in idCharacteristicsMap.keys) {
-                if (key.equals(cameraId.toString())) {
-                    characteristicsMap.put(key, idCharacteristicsMap.get(key))
+        val cameraFilter = CameraFilter { cameraInfos ->
+            val filteredCameraInfos = java.util.ArrayList<CameraInfo>()
+
+            for (cameraInfo in cameraInfos) {
+                if(cameraInfo is Camera2CameraInfoImpl){
+                    cameraInfo.cameraId
+                    if (cameraInfo.cameraId.equals(cameraId.toString())) {
+                        filteredCameraInfos.add(cameraInfo)
+                    }
                 }
             }
-            characteristicsMap
+            filteredCameraInfos
         }
-        val createCameraFilter = Camera2CameraFilter.createCameraFilter(camera2Filter)
+
         val cameraSelector:CameraSelector
         if(cameraId>-1){
-            cameraSelector = CameraSelector.Builder().addCameraFilter (createCameraFilter).build()
+            cameraSelector = CameraSelector.Builder().addCameraFilter (cameraFilter).build()
         } else {
             cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
         }
@@ -333,10 +327,10 @@ abstract class CameraXFragment : Fragment() {
         //setFocusDistance(previewBuilder, 0f)
 
 
-        val autoPreviewExtender = AutoPreviewExtender.create(previewBuilder)
+       /* val autoPreviewExtender = AutoPreviewExtender.create(previewBuilder)
         if(autoPreviewExtender.isExtensionAvailable(cameraSelector)){
             autoPreviewExtender.enableExtension(cameraSelector)
-        }
+        }*/
         preview = previewBuilder.build()
 
         imageCapture = ImageCapture.Builder()
@@ -387,7 +381,7 @@ abstract class CameraXFragment : Fragment() {
                         this, cameraSelector, preview)
             }
             // Attach the viewfinder's surface provider to preview use case
-            preview?.setSurfaceProvider(cameraPreview.createSurfaceProvider())
+            preview?.setSurfaceProvider(cameraPreview.surfaceProvider)
         } catch (exc: Exception) {
             Log.e(TAG, "Use case binding failed", exc)
         }
