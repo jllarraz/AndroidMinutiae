@@ -203,7 +203,7 @@ abstract class CameraXFragment : Fragment() {
         // Determine the output directory
 
 
-        // Wait for the views to be properly laid out
+        /*// Wait for the views to be properly laid out
         cameraPreview.post {
 
             // Keep track of the display in which this view is attached
@@ -211,7 +211,7 @@ abstract class CameraXFragment : Fragment() {
 
             // Set up the camera and its use cases
             setUpCamera()
-        }
+        }*/
 
         val scaleGestureDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.OnScaleGestureListener {
             override fun onScaleBegin(detector: ScaleGestureDetector?): Boolean {
@@ -606,6 +606,14 @@ abstract class CameraXFragment : Fragment() {
 
         if (PermissionUtils.allPermissionsGranted(checkPermissions)) {
             //Dont do anything
+            cameraPreview.post {
+
+                // Keep track of the display in which this view is attached
+                displayId = cameraPreview.display.displayId
+
+                // Set up the camera and its use cases
+                setUpCamera()
+            }
         } else {
 
             if (!permissionsRevoked.isEmpty()) {
