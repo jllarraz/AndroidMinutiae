@@ -5,7 +5,7 @@
       <map>
         <entry key="app/src/main/res/layout/activity_main.xml" value="0.16979166666666667" />
         <entry key="app/src/main/res/layout/fragment_camerax.xml" value="0.25" />
-        <entry key="app/src/main/res/layout/fragment_minutiae.xml" value="0.16666666666666666" />
+        <entry key="app/src/main/res/layout/fragment_minutiae.xml" value="0.1" />
         <entry key="app/src/main/res/layout/layout_minutae.xml" value="0.16979166666666667" />
         <entry key="app/src/main/res/layout/layout_minutiae.xml" value="0.16666666666666666" />
       </map>
