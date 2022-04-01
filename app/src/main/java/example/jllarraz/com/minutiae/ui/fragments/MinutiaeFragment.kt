@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -16,6 +18,7 @@ import androidx.camera.view.PreviewView
 import example.jllarraz.com.myapplication.BuildConfig
 import example.jllarraz.com.minutiae.utils.ImageProcessing
 import example.jllarraz.com.minutiae.utils.ImageUtils
+import example.jllarraz.com.minutiae.utils.ImageUtils.rotate
 import example.jllarraz.com.myapplication.R
 import example.jllarraz.com.myapplication.databinding.FragmentMinutiaeBinding
 import io.reactivex.Single
@@ -26,6 +29,7 @@ import io.reactivex.schedulers.Schedulers
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MinutiaeFragment : CameraXFragment() {
@@ -54,6 +58,15 @@ class MinutiaeFragment : CameraXFragment() {
                 }
                 ImageProcessing.Companion.ACTION_STEP_HISTOGRAM_EQUALIZATION->{
                     fragmentBinding?.log?.setText(getString(R.string.step_histogram_equalization))
+                }
+                ImageProcessing.Companion.ACTION_STEP_CLAHE_EQUALIZATION->{
+                    fragmentBinding?.log?.setText(getString(R.string.step_clahe_equalization))
+                }
+                ImageProcessing.Companion.ACTION_STEP_ADAPTATIVE_THRESHOLD->{
+                    fragmentBinding?.log?.setText(getString(R.string.step_adaptative_threshold))
+                }
+                ImageProcessing.Companion.ACTION_STEP_BILATERAL_FILTER->{
+                    fragmentBinding?.log?.setText(getString(R.string.step_bilateral_filter))
                 }
                 ImageProcessing.Companion.ACTION_STEP_FINGERPRINT_SKELETIZATION->{
                     fragmentBinding?.log?.setText(getString(R.string.step_fingerprint_skelization))
@@ -132,6 +145,9 @@ class MinutiaeFragment : CameraXFragment() {
         intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_FINGERPRINT_SKELETIZATION)
         intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_FINISH_FINGERPRINT_EXTRACTION)
         intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_HISTOGRAM_EQUALIZATION)
+        intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_CLAHE_EQUALIZATION)
+        intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_ADAPTATIVE_THRESHOLD)
+        intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_BILATERAL_FILTER)
         intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_MINUTIAE_EXTRATION)
         intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_RIDGE_THINNING)
         intentFilter.addAction(ImageProcessing.Companion.ACTION_STEP_SKIN_DETECTION)
@@ -244,7 +260,13 @@ class MinutiaeFragment : CameraXFragment() {
                 image.close()
                 toByteArray
             }.flatMap{ byteArray->
-                val processedImage = ImageProcessing().processedImage(byteArray, requireContext())
+                val processedImage = ImageProcessing().processedImage(
+                    data = byteArray,
+                    context = requireContext(),
+                    isClahe = true,
+                    isAdaptativeThreshold = true,
+                    isBilateralFilter = true,
+                )
                 processedImage
             }
                 .subscribeOn(Schedulers.computation())

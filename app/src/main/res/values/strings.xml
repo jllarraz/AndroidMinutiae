@@ -17,6 +17,9 @@
     <string name="step_start">Starting Minutiae Extraction</string>
     <string name="step_skin_detection">Skin Detection</string>
     <string name="step_histogram_equalization">Histogram Equalization</string>
+    <string name="step_clahe_equalization">CLAHE Equalization</string>
+    <string name="step_adaptative_threshold">Adaptative Threshold</string>
+    <string name="step_bilateral_filter">Bilateral Filter</string>
     <string name="step_fingerprint_skelization">Fingerprint Skelization</string>
     <string name="step_ridge_thinning">Ridge Thinning</string>
     <string name="step_minutiae_extraction">Minutiae Extraction</string>

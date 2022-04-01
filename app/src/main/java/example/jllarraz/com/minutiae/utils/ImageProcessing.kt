@@ -27,6 +27,9 @@ internal class ImageProcessing{
         START_FINGERPRINT_EXTRACTION,
         SKIN_DETECTION,
         HISTOGRAM_EQUALIZATION,
+        CLAHE_EQUALIZATION,
+        ADAPTATIVE_THRESHOLD,
+        BILATERAL_FILTER,
         FINGERPRINT_SKELETIZATION,
         RIDGE_THINNING,
         MINUTIAE_EXTRACTION,
@@ -39,13 +42,18 @@ internal class ImageProcessing{
     * get fingerprint skeleton image. Large part of this code is copied from
     * https://github.com/noureldien/FingerprintRecognition/blob/master/Java/src/com/fingerprintrecognition/ProcessActivity.java
     */
-    fun processedImage(data: ByteArray, context: Context?): Single<Bitmap>{
+    fun processedImage(data: ByteArray, context: Context?, isClahe:Boolean=false, isAdaptativeThreshold:Boolean=false, isBilateralFilter:Boolean=false): Single<Bitmap>{
         return Single.fromCallable {
             onNextStep(Step.START_FINGERPRINT_EXTRACTION, context)
             var imageColor = bytesToMat(data)
             imageColor = rotateImage(imageColor)
             imageColor = cropFingerprint(imageColor)
-            imageColor = skinDetection(imageColor)
+
+            val lower = Scalar(0.toDouble(), 20.toDouble(), 20.toDouble())
+            val upper = Scalar(20.toDouble(), 255.toDouble(), 255.toDouble())
+
+            imageColor = skinDetection(imageColor, lower, upper)
+
             onNextStep(Step.SKIN_DETECTION, context)
 
             val image = Mat(imageColor.rows(), imageColor.cols(), CvType.CV_8UC1)
@@ -54,18 +62,53 @@ internal class ImageProcessing{
             val cols = image.cols()
 
             // apply histogram equalization
-            val equalized = Mat(rows, cols, CvType.CV_32FC1)
-            Imgproc.equalizeHist(image, equalized)
-            onNextStep(Step.HISTOGRAM_EQUALIZATION, context)
+            var equalizedHistogram = Mat(rows, cols, CvType.CV_32FC1)
+            if(!isClahe) {
+                Imgproc.equalizeHist(image, equalizedHistogram)
+                onNextStep(Step.HISTOGRAM_EQUALIZATION, context)
+            }else{
+                val clahe = Imgproc.createCLAHE()
+                clahe.clipLimit = 2.0
+                clahe.tilesGridSize = Size(4.toDouble(),4.toDouble())
+                clahe.apply(image, equalizedHistogram)
+                onNextStep(Step.CLAHE_EQUALIZATION, context)
+            }
+
+            if(isAdaptativeThreshold){
+                val adaptativeThreshold = Mat(rows, cols, CvType.CV_32FC1)
+                Imgproc.adaptiveThreshold(equalizedHistogram, adaptativeThreshold, 255.toDouble(), Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY, 11, 2.toDouble())
+                equalizedHistogram =adaptativeThreshold
+                onNextStep(Step.ADAPTATIVE_THRESHOLD, context)
+            }
+
+            if(isBilateralFilter) {
+                val bilateralFilter = Mat(rows, cols, CvType.CV_32FC1)
+                Imgproc.bilateralFilter(
+                    equalizedHistogram,
+                    bilateralFilter,
+                    9,
+                    20.toDouble(),
+                    20.toDouble()
+                )
+                equalizedHistogram = bilateralFilter
+                onNextStep(Step.BILATERAL_FILTER, context)
+            }
 
             // convert to float, very important
-            val floated = Mat(rows, cols, CvType.CV_32FC1)
-            equalized.convertTo(floated, CvType.CV_32FC1)
-            var skeleton = getSkeletonImage(floated, rows, cols)
+            val floatedClaheAdaptative = Mat(rows, cols, CvType.CV_32FC1)
+            equalizedHistogram.convertTo(floatedClaheAdaptative, CvType.CV_32FC1)
+            var skeletonClaheAdaptative = getSkeletonImage(
+                src = floatedClaheAdaptative,
+                rows = rows,
+                cols = cols,
+
+            )
+
+
             onNextStep(Step.FINGERPRINT_SKELETIZATION, context)
-            skeleton = thinning(skeleton)
+            skeletonClaheAdaptative = thinning(skeletonClaheAdaptative)
             onNextStep(Step.RIDGE_THINNING, context)
-            val skeleton_with_keypoints = detectMinutiae(skeleton, 1)
+            val skeleton_with_keypoints = detectMinutiae(skeletonClaheAdaptative, 1)
             onNextStep(Step.MINUTIAE_EXTRACTION, context)
             val mat2Bitmap = mat2Bitmap(skeleton_with_keypoints, Imgproc.COLOR_RGB2RGBA)
             onNextStep(Step.FINISH_FINGERPRINT_EXTRACTION, context)
@@ -85,6 +128,15 @@ internal class ImageProcessing{
             }
             Step.HISTOGRAM_EQUALIZATION ->{
                 intentRequest = Intent(ACTION_STEP_HISTOGRAM_EQUALIZATION)
+            }
+            Step.CLAHE_EQUALIZATION ->{
+                intentRequest = Intent(ACTION_STEP_CLAHE_EQUALIZATION)
+            }
+            Step.ADAPTATIVE_THRESHOLD ->{
+                intentRequest = Intent(ACTION_STEP_ADAPTATIVE_THRESHOLD)
+            }
+            Step.BILATERAL_FILTER ->{
+                intentRequest = Intent(ACTION_STEP_BILATERAL_FILTER)
             }
             Step.FINGERPRINT_SKELETIZATION ->{
                 intentRequest = Intent(ACTION_STEP_FINGERPRINT_SKELETIZATION)
@@ -381,12 +433,14 @@ internal class ImageProcessing{
         return results
     }
 
-    fun skinDetection(src: Mat): Mat {
-        // define the upper and lower boundaries of the HSV pixel
-        // intensities to be considered 'skin'
-        val lower = Scalar(0.toDouble(), 48.toDouble(), 80.toDouble())
-        val upper = Scalar(20.toDouble(), 255.toDouble(), 255.toDouble())
-
+    /**
+     * define the upper and lower boundaries of the HSV pixel
+     * intensities to be considered 'skin'
+     */
+    fun skinDetection(src: Mat,
+                      lower:Scalar = Scalar(0.toDouble(), 48.toDouble(), 80.toDouble()),
+                      upper:Scalar = Scalar(20.toDouble(), 255.toDouble(), 255.toDouble())
+    ): Mat {
         // Convert to HSV
         val hsvFrame = Mat(src.rows(), src.cols(), CvType.CV_8U, Scalar(3.toDouble()))
         Imgproc.cvtColor(src, hsvFrame, Imgproc.COLOR_RGB2HSV, 3)
@@ -415,10 +469,23 @@ internal class ImageProcessing{
         return skin
     }
 
-    private fun getSkeletonImage(src: Mat, rows: Int, cols: Int): Mat {
+    private fun getSkeletonImage(src: Mat,
+                                 rows: Int,
+                                 cols: Int,
+                                 ridgeSegmentPaddingBlockSize:Int = 24,
+                                 ridgeSegmentPaddingThreshold:Double = 0.05,
+                                 ridgeOrientationGradientSigma:Double = 1.0,
+                                 ridgeOrientationBlockSigma:Double = 13.0,
+                                 ridgeOrientationOrientSmoothSigma:Double = 15.0,
+                                 ridgeFrequencyBlockSize:Int = 36,
+                                 ridgeFrequencyWindowSize:Int = 5,
+                                 ridgeFrequencyMinWaveLength:Int = 5,
+                                 ridgeFrequencyMaxWaveLength:Int = 25,
+                                 ridgeFilterFilterSize:Double = 1.9
+    ): Mat {
         // step 1: get ridge segment by padding then do block process
-        val blockSize = 24
-        val threshold = 0.05
+        val blockSize = ridgeSegmentPaddingBlockSize
+        val threshold = ridgeSegmentPaddingThreshold
         val padded = imagePadding(src, blockSize)
         val imgRows = padded.rows()
         val imgCols = padded.cols()
@@ -427,9 +494,9 @@ internal class ImageProcessing{
         ridgeSegment(padded, matRidgeSegment, segmentMask, blockSize, threshold)
 
         // step 2: get ridge orientation
-        val gradientSigma = 1
-        val blockSigma = 13
-        val orientSmoothSigma = 15
+        val gradientSigma = ridgeOrientationGradientSigma
+        val blockSigma = ridgeOrientationBlockSigma
+        val orientSmoothSigma = ridgeOrientationOrientSmoothSigma
         val matRidgeOrientation = Mat(imgRows, imgCols, CvType.CV_32FC1)
         ridgeOrientation(
             matRidgeSegment,
@@ -440,10 +507,10 @@ internal class ImageProcessing{
         )
 
         // step 3: get ridge frequency
-        val fBlockSize = 36
-        val fWindowSize = 5
-        val fMinWaveLength = 5
-        val fMaxWaveLength = 25
+        val fBlockSize = ridgeFrequencyBlockSize
+        val fWindowSize = ridgeFrequencyWindowSize
+        val fMinWaveLength = ridgeFrequencyMinWaveLength
+        val fMaxWaveLength = ridgeFrequencyMaxWaveLength
         val matFrequency = Mat(imgRows, imgCols, CvType.CV_32FC1)
         val medianFreq = ridgeFrequency(
             matRidgeSegment,
@@ -458,7 +525,7 @@ internal class ImageProcessing{
 
         // step 4: get ridge filter
         val matRidgeFilter = Mat(imgRows, imgCols, CvType.CV_32FC1)
-        val filterSize = 1.9
+        val filterSize = ridgeFilterFilterSize
         val padding = ridgeFilter(
             matRidgeSegment,
             matRidgeOrientation,
@@ -608,9 +675,9 @@ internal class ImageProcessing{
     private fun ridgeOrientation(
         ridgeSegment: Mat,
         result: Mat,
-        gradientSigma: Int,
-        blockSigma: Int,
-        orientSmoothSigma: Int
+        gradientSigma: Double,
+        blockSigma: Double,
+        orientSmoothSigma: Double
     ) {
         val rows = ridgeSegment.rows()
         val cols = ridgeSegment.cols()
@@ -693,9 +760,9 @@ internal class ImageProcessing{
     /**
      * Create Gaussian kernel.
      */
-    private fun gaussianKernel(kSize: Int, sigma: Int): Mat {
-        val kernelX = Imgproc.getGaussianKernel(kSize, sigma.toDouble(), CvType.CV_32FC1)
-        val kernelY = Imgproc.getGaussianKernel(kSize, sigma.toDouble(), CvType.CV_32FC1)
+    private fun gaussianKernel(kSize: Int, sigma: Double): Mat {
+        val kernelX = Imgproc.getGaussianKernel(kSize, sigma, CvType.CV_32FC1)
+        val kernelY = Imgproc.getGaussianKernel(kSize, sigma, CvType.CV_32FC1)
         val kernel = Mat(kSize, kSize, CvType.CV_32FC1)
         Core.gemm(
             kernelX,
@@ -1099,6 +1166,9 @@ internal class ImageProcessing{
         const val ACTION_STEP_START_FINGERPRINT_EXTRACTION = "example.jllarraz.com.myapplication.STEP_START_FINGERPRINT_EXTRACTION"
         const val ACTION_STEP_SKIN_DETECTION = "example.jllarraz.com.myapplication.STEP_SKIN_DETECTION"
         const val ACTION_STEP_HISTOGRAM_EQUALIZATION = "example.jllarraz.com.myapplication.STEP_HISTOGRAM_EQUALIZATION"
+        const val ACTION_STEP_CLAHE_EQUALIZATION = "example.jllarraz.com.myapplication.ACTION_STEP_CLAHE_EQUALIZATION"
+        const val ACTION_STEP_ADAPTATIVE_THRESHOLD = "example.jllarraz.com.myapplication.ACTION_STEP_ADAPTATIVE_THRESHOLD"
+        const val ACTION_STEP_BILATERAL_FILTER = "example.jllarraz.com.myapplication.ACTION_STEP_BILATERAL_FILTER"
         const val ACTION_STEP_FINGERPRINT_SKELETIZATION = "example.jllarraz.com.myapplication.STEP_FINGERPRINT_SKELETIZATION"
         const val ACTION_STEP_RIDGE_THINNING = "example.jllarraz.com.myapplication.STEP_RIDGE_THINNING"
         const val ACTION_STEP_MINUTIAE_EXTRATION = "example.jllarraz.com.myapplication.STEP_MINUTIAE_EXTRATION"
